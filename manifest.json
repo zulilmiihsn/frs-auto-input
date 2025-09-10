@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "BPS-FRS Auto Input",
+  "version": "1.0",
+  "description": "Extension untuk otomatisasi input form BPS FRS dengan drag & drop dan hotkey",
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Modifikasi URL BPS FRS"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://frs.bps.go.id/*"],
+      "js": ["content.js"]
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "name": "bps-frs-auto-input",
+  "version": "1.0.0",
+  "description": "Chrome Extension untuk otomatisasi input form BPS FRS dengan drag & drop dan hotkey",
+  "main": "content.js",
+  "scripts": {
+    "build": "echo 'Chrome Extension - No build required'",
+    "test": "echo 'No tests specified'"
+  },
+  "keywords": [
+    "chrome-extension",
+    "bps-frs",
+    "automation",
+    "form-filler",
+    "select2",
+    "indonesia"
+  ],
+  "author": "BPS FRS Auto Input",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/username/bps-frs-auto-input.git"
+  },
+  "bugs": {
+    "url": "https://github.com/username/bps-frs-auto-input/issues"
+  },
+  "homepage": "https://github.com/username/bps-frs-auto-input#readme"
+}

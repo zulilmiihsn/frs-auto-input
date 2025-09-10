@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      width: 300px;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+    }
+    
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    
+    .header h1 {
+      color: #333;
+      font-size: 18px;
+      margin: 0;
+    }
+    
+    .header p {
+      color: #666;
+      font-size: 12px;
+      margin: 5px 0 0 0;
+    }
+    
+    .url-info {
+      background: white;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .url-info h3 {
+      margin: 0 0 10px 0;
+      color: #333;
+      font-size: 14px;
+    }
+    
+    .current-url {
+      background: #f8f9fa;
+      padding: 8px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 11px;
+      word-break: break-all;
+      color: #666;
+      border: 1px solid #e9ecef;
+    }
+    
+    .action-button {
+      width: 100%;
+      padding: 12px;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    
+    .action-button:hover {
+      background: #0056b3;
+    }
+    
+    .action-button:disabled {
+      background: #6c757d;
+      cursor: not-allowed;
+    }
+    
+    .status {
+      margin-top: 10px;
+      padding: 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      text-align: center;
+    }
+    
+    .status.success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    
+    .status.error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    
+    .status.info {
+      background: #d1ecf1;
+      color: #0c5460;
+      border: 1px solid #bee5eb;
+    }
+    
+    .instructions {
+      background: white;
+      padding: 15px;
+      border-radius: 8px;
+      margin-top: 15px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .instructions h4 {
+      margin: 0 0 10px 0;
+      color: #333;
+      font-size: 13px;
+    }
+    
+    .instructions ol {
+      margin: 0;
+      padding-left: 20px;
+      font-size: 12px;
+      color: #666;
+    }
+    
+    .instructions li {
+      margin-bottom: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>BPS-FRS Auto Input</h1>
+    <p>Pengaturan otomatisasi input form BPS FRS</p>
+  </div>
+  
+  <div id="status" class="status" style="display: none;"></div>
+  
+  <div class="instructions">
+    <h4>⚙️ Pengaturan Auto Fill:</h4>
+    <div style="margin: 10px 0;">
+      <label for="kecamatanSelect" style="display: block; margin-bottom: 5px; font-size: 12px; font-weight: bold;">Pilih Kecamatan:</label>
+      <select id="kecamatanSelect" style="width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+        <option value="3573010 - KEDUNGKANDANG">3573010 - KEDUNGKANDANG</option>
+        <option value="3573020 - SUKUN">3573020 - SUKUN</option>
+        <option value="3573030 - KLOJEN">3573030 - KLOJEN</option>
+        <option value="3573040 - BLIMBING">3573040 - BLIMBING</option>
+        <option value="3573050 - LOWOKWARU">3573050 - LOWOKWARU</option>
+      </select>
+      
+      <label for="kelurahanSelect" style="display: block; margin-bottom: 5px; font-size: 12px; font-weight: bold;">Pilih Kelurahan/Desa:</label>
+      <select id="kelurahanSelect" style="width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+        <!-- Options akan diupdate berdasarkan kecamatan yang dipilih -->
+      </select>
+      
+      <button id="saveSettings" style="width: 100%; padding: 8px; background: #17a2b8; color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; margin-bottom: 5px;">
+        💾 Simpan Pengaturan
+      </button>
+      <button id="resetSettings" style="width: 100%; padding: 8px; background: #ffc107; color: #333; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; margin-bottom: 10px;">
+        🔄 Reset ke Default
+      </button>
+      
+      <label for="hotkeySelect" style="display: block; margin-bottom: 5px; font-size: 12px; font-weight: bold;">Hotkey Simpan:</label>
+      <select id="hotkeySelect" style="width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+        <option value="shift+/">SHIFT + /</option>
+        <option value="ctrl+s">CTRL + S</option>
+        <option value="ctrl+enter">CTRL + ENTER</option>
+        <option value="f9">F9</option>
+        <option value="f10">F10</option>
+        <option value="alt+s">ALT + S</option>
+      </select>
+    </div>
+  </div>
+  
+  <div class="instructions">
+    <h4>Cara Penggunaan:</h4>
+    <ol>
+      <li><strong>Pengaturan:</strong><br>
+        - Pilih Kecamatan dan Kelurahan/Desa yang diinginkan<br>
+        - Klik "Simpan Pengaturan" untuk menyimpan pilihan
+      </li>
+      <li><strong>Auto-Fill:</strong><br>
+        - Buka halaman BPS FRS dengan URL pattern: <code>frs.bps.go.id/area/area/ms/XXXXXX</code><br>
+        - Klik floating button "Mulai!" untuk auto-fill<br>
+        - Extension akan mengisi dropdown sesuai pengaturan yang disimpan
+      </li>
+    </ol>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
