@@ -649,49 +649,61 @@ async function automateDropdowns() {
           $(element).select2('open');
         }
         
+        // Method 6: Trigger change event setelah dropdown dibuka untuk memastikan deteksi
+        setTimeout(() => {
+          if (element.value && element.value !== '') {
+            console.log('🎯 Dropdown SLS sudah terisi, trigger handleSLSChange');
+            handleSLSChange();
+          }
+        }, 200);
+        
         // Listen untuk perubahan value dropdown SLS dengan multiple events
         const handleSLSChange = () => {
           if (element.value && element.value !== '') {
-            // Auto scroll ke bawah setelah dropdown SLS terisi
+            console.log('🎯 Dropdown SLS terisi, memulai auto scroll dan highlight...');
+            
+            // Auto scroll ke bawah setelah dropdown SLS terisi (tanpa delay)
+            window.scrollTo({
+              top: document.body.scrollHeight,
+              behavior: 'smooth'
+            });
+            console.log('📜 Auto scroll ke bawah setelah dropdown SLS terisi');
+            
+            // Highlight field "Nama Ketua SLS-Non-SLS" dan select all isinya
             setTimeout(() => {
-              window.scrollTo({
-                top: document.body.scrollHeight,
-                behavior: 'smooth'
-              });
-              console.log('📜 Auto scroll ke bawah setelah dropdown SLS terisi');
-              
-              // Highlight field "Nama Ketua SLS-Non-SLS" setelah scroll
-              setTimeout(() => {
-                highlightNamaKetuaField();
-              }, 500);
-            }, 200);
+              highlightNamaKetuaField();
+            }, 100); // Delay minimal untuk memastikan scroll selesai
           }
         };
         
         // Event listener untuk berbagai event Select2
         element.addEventListener('change', handleSLSChange);
         element.addEventListener('select2:select', handleSLSChange);
+        element.addEventListener('select2:selecting', handleSLSChange);
         
         // Juga listen dengan jQuery jika tersedia
         if (typeof $ !== 'undefined' && $(element).data('select2')) {
           $(element).on('change', handleSLSChange);
           $(element).on('select2:select', handleSLSChange);
+          $(element).on('select2:selecting', handleSLSChange);
         }
         
-        // Polling untuk memastikan event terdeteksi
-        let lastValue = element.value;
-        const checkValueChange = () => {
-          if (element.value && element.value !== '' && element.value !== lastValue) {
-            lastValue = element.value;
+        // Polling untuk memastikan perubahan terdeteksi (minimal)
+        let lastSLSValue = element.value;
+        const slsPollInterval = setInterval(() => {
+          if (element.value && element.value !== '' && element.value !== lastSLSValue) {
+            lastSLSValue = element.value;
+            console.log('📊 Polling: Dropdown SLS berubah, trigger handleSLSChange');
             handleSLSChange();
           }
-        };
+        }, 100);
         
-        // Check setiap 100ms selama 10 detik
-        const pollInterval = setInterval(checkValueChange, 100);
+        // Stop polling setelah 10 detik
         setTimeout(() => {
-          clearInterval(pollInterval);
+          clearInterval(slsPollInterval);
         }, 10000);
+        
+        // Event listener saja, tanpa polling untuk kecepatan maksimal
         
         successCount++;
         continue;
@@ -719,19 +731,15 @@ async function automateDropdowns() {
       element.focus();
       element.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
       
-      // Delay minimal untuk load data
-      await delay(50);
-      
-      // Tunggu opsi tersedia dengan timeout minimal
+      // Tunggu opsi tersedia dengan timeout super minimal
       let options;
       try {
-        options = await waitForOptionsFast(dropdown.id, 5000);
+        options = await waitForOptionsFast(dropdown.id, 2000);
       } catch (error) {
         console.log(`⚠️ ${dropdown.name}: ${error.message}`);
-        // Coba sekali lagi dengan delay singkat
-        await delay(200);
+        // Coba sekali lagi tanpa delay
         try {
-          options = await waitForOptionsFast(dropdown.id, 3000);
+          options = await waitForOptionsFast(dropdown.id, 1000);
         } catch (retryError) {
           console.log(`❌ ${dropdown.name}: Gagal setelah retry - ${retryError.message}`);
           continue; // Skip dropdown ini
@@ -743,8 +751,7 @@ async function automateDropdowns() {
                   
                   if (selectedOption) {
                     successCount++;
-                    // Delay minimal antar dropdown
-                    await delay(20);
+                    // No delay antar dropdown untuk kecepatan maksimal
                   } else {
                     break;
                   }
@@ -764,8 +771,8 @@ async function automateDropdowns() {
 
 // Fungsi-fungsi lama dihapus untuk performa yang lebih baik
 
-// Fungsi tunggu opsi dengan delay minimal
-function waitForOptionsFast(elementId, timeout = 5000) {
+// Fungsi tunggu opsi dengan delay super minimal
+function waitForOptionsFast(elementId, timeout = 2000) {
   return new Promise((resolve, reject) => {
     const startTime = Date.now();
     
@@ -798,7 +805,7 @@ function waitForOptionsFast(elementId, timeout = 5000) {
           reject(new Error(`Options untuk ${elementId} tidak dimuat dalam ${timeout}ms`));
         }
       } else {
-        setTimeout(checkOptions, 100); // Check setiap 100ms
+        setTimeout(checkOptions, 50); // Check setiap 50ms untuk kecepatan maksimal
       }
     };
     
@@ -812,20 +819,26 @@ async function selectDropdownOptionInstant(dropdown, options) {
   let selectedOption = null;
   
   if (dropdown.target) {
-    // Cari opsi berdasarkan target
-    selectedOption = Array.from(options).find(option => {
-      const text = option.textContent || option.innerText || '';
-      return text.includes(dropdown.target);
-    });
+    // Cari opsi berdasarkan target dengan method tercepat
+    for (let i = 0; i < options.length; i++) {
+      const text = options[i].textContent || options[i].innerText || '';
+      if (text.includes(dropdown.target)) {
+        selectedOption = options[i];
+        break;
+      }
+    }
   }
   
   if (!selectedOption && options.length > 0) {
-    // Pilih opsi pertama yang valid
-    selectedOption = Array.from(options).find(option => {
-      const text = option.textContent || option.innerText || '';
-      const value = option.value || option.getAttribute('data-value') || '';
-      return value && value !== '' && !text.includes('Pilih') && !text.includes('Loading') && text.trim() !== '';
-    });
+    // Pilih opsi pertama yang valid dengan method tercepat
+    for (let i = 0; i < options.length; i++) {
+      const text = options[i].textContent || options[i].innerText || '';
+      const value = options[i].value || options[i].getAttribute('data-value') || '';
+      if (value && value !== '' && !text.includes('Pilih') && !text.includes('Loading') && text.trim() !== '') {
+        selectedOption = options[i];
+        break;
+      }
+    }
   }
   
   if (selectedOption) {
@@ -838,13 +851,11 @@ async function selectDropdownOptionInstant(dropdown, options) {
       optionValue = optionText.split(' - ')[0].trim();
     }
     
-    // Method yang terbukti efektif: Mouse events (minimal delay)
+    // Method super cepat: Langsung click tanpa delay
     try {
       selectedOption.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
       selectedOption.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
       selectedOption.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      
-      await delay(50);
       
       const currentValue = element.value;
       if (currentValue && currentValue !== '') {
