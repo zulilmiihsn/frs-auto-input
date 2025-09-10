@@ -5,18 +5,8 @@ console.log('BPS-FRS Auto Input - Content script loaded');
 let hotkeySettings = { hotkey: 'shift+/' };
 let isHotkeyEnabled = false;
 
-// Global variables untuk auto fill trigger
+// Global variables untuk auto fill
 let isAutoFillRunning = false;
-let delayedTriggerTimeout = null;
-let dropdownLoadListeners = new Set();
-let autoFillRetryInterval = null;
-let autoFillRetryCount = 0;
-const maxAutoFillRetries = 10;
-
-// Global variables untuk slow internet detection
-let isSlowInternet = false;
-let slowInternetDetectionCount = 0;
-const slowInternetThreshold = 2; // Jika 2 dropdown timeout, anggap slow internet
 
 // Fungsi untuk menampilkan notifikasi di halaman
 function showNotification(message, type = 'info') {
@@ -62,404 +52,22 @@ function validateUrl(url) {
   return validateUrlFlexible(url);
 }
 
-// Fungsi untuk mendeteksi dropdown yang selesai diload dan memicu auto fill
-function setupDropdownLoadTrigger() {
-  console.log('🔍 Setting up dropdown load trigger...');
-  
-  // Daftar dropdown yang perlu dimonitor
-  const dropdownIds = ['provinsi', 'kabupatenKota', 'kecamatan', 'kelurahanDesa'];
-  
-  dropdownIds.forEach(dropdownId => {
-    const element = document.getElementById(dropdownId);
-    if (!element) return;
-    
-    // Cek apakah sudah ada listener untuk dropdown ini
-    if (dropdownLoadListeners.has(dropdownId)) return;
-    
-    // Event listener untuk Select2 events
-    const handleDropdownLoad = () => {
-      console.log(`📡 Dropdown ${dropdownId} selesai diload, memicu delayed auto fill...`);
-      
-      // Clear timeout sebelumnya jika ada
-      if (delayedTriggerTimeout) {
-        clearTimeout(delayedTriggerTimeout);
-      }
-      
-      // Trigger auto fill setelah 1 detik (lebih cepat)
-      delayedTriggerTimeout = setTimeout(async () => {
-        if (!isAutoFillRunning) {
-          console.log('🚀 Delayed trigger: Memulai auto fill...');
-          await triggerAutoFill();
-        }
-      }, 1000);
-    };
-    
-    // Multiple event listeners untuk memastikan terdeteksi
-    element.addEventListener('select2:loaded', handleDropdownLoad);
-    element.addEventListener('select2:opened', handleDropdownLoad);
-    element.addEventListener('change', handleDropdownLoad);
-    element.addEventListener('select2:select', handleDropdownLoad);
-    
-    // Juga dengan jQuery jika tersedia
-    if (typeof $ !== 'undefined' && $(element).data('select2')) {
-      $(element).on('select2:loaded', handleDropdownLoad);
-      $(element).on('select2:opened', handleDropdownLoad);
-      $(element).on('change', handleDropdownLoad);
-      $(element).on('select2:select', handleDropdownLoad);
-    }
-    
-    // Polling yang lebih agresif untuk mendeteksi perubahan opsi
-    let lastOptionCount = 0;
-    let lastValidOptionCount = 0;
-    const pollInterval = setInterval(() => {
-      const select2Options = document.querySelectorAll('.select2-results__option');
-      const validOptions = Array.from(select2Options).filter(option => {
-        const text = option.textContent || option.innerText || '';
-        return text.trim() !== '' && !text.includes('Pilih') && !text.includes('Loading') && !text.includes('Searching');
-      });
-      
-      // Trigger jika ada opsi baru yang valid
-      if (validOptions.length > lastValidOptionCount && validOptions.length > 0) {
-        lastValidOptionCount = validOptions.length;
-        console.log(`📊 Polling: ${validOptions.length} valid options detected untuk ${dropdownId}`);
-        handleDropdownLoad();
-      }
-      
-      // Juga trigger jika total opsi bertambah
-      if (select2Options.length > lastOptionCount && select2Options.length > 0) {
-        lastOptionCount = select2Options.length;
-        console.log(`📊 Polling: ${select2Options.length} total options detected untuk ${dropdownId}`);
-        handleDropdownLoad();
-      }
-    }, 200); // Polling lebih sering (200ms)
-    
-    // Stop polling setelah 60 detik
-    setTimeout(() => {
-      clearInterval(pollInterval);
-    }, 60000);
-    
-    dropdownLoadListeners.add(dropdownId);
-    console.log(`✅ Dropdown load trigger setup untuk ${dropdownId}`);
-  });
-  
-  // Global polling untuk mendeteksi perubahan di semua dropdown
-  let globalLastOptionCount = 0;
-  const globalPollInterval = setInterval(() => {
-    const allSelect2Options = document.querySelectorAll('.select2-results__option');
-    const validOptions = Array.from(allSelect2Options).filter(option => {
-      const text = option.textContent || option.innerText || '';
-      return text.trim() !== '' && !text.includes('Pilih') && !text.includes('Loading') && !text.includes('Searching');
-    });
-    
-    // Trigger jika ada opsi valid yang baru
-    if (validOptions.length > globalLastOptionCount && validOptions.length > 0) {
-      globalLastOptionCount = validOptions.length;
-      console.log(`🌐 Global polling: ${validOptions.length} valid options detected`);
-      
-      // Clear timeout sebelumnya jika ada
-      if (delayedTriggerTimeout) {
-        clearTimeout(delayedTriggerTimeout);
-      }
-      
-      // Trigger auto fill setelah 1 detik
-      delayedTriggerTimeout = setTimeout(async () => {
-        if (!isAutoFillRunning) {
-          console.log('🚀 Global delayed trigger: Memulai auto fill...');
-          await triggerAutoFill();
-        }
-      }, 1000);
-    }
-  }, 300);
-  
-  // Stop global polling setelah 60 detik
-  setTimeout(() => {
-    clearInterval(globalPollInterval);
-  }, 60000);
-}
-
-// Fungsi untuk memicu auto fill dengan delay
-async function triggerAutoFill() {
+// Fungsi sederhana untuk auto fill dengan delay minimal
+async function simpleAutoFill() {
   if (isAutoFillRunning) {
-    console.log('⚠️ Auto fill sudah berjalan, skip trigger...');
+    console.log('⚠️ Auto fill sudah berjalan, skip...');
     return;
   }
   
   isAutoFillRunning = true;
-  console.log('🚀 Triggered auto fill dimulai...');
+  console.log('🚀 Simple auto fill dimulai...');
   
   try {
     await automateDropdowns();
   } catch (error) {
-    console.error('❌ Error dalam triggered auto fill:', error);
+    console.error('❌ Error dalam simple auto fill:', error);
   } finally {
     isAutoFillRunning = false;
-  }
-}
-
-// Fungsi untuk setup MutationObserver untuk mendeteksi perubahan DOM
-function setupMutationObserver() {
-  console.log('🔍 Setting up MutationObserver...');
-  
-  // Buat observer untuk mendeteksi perubahan di DOM
-  const observer = new MutationObserver((mutations) => {
-    let shouldTrigger = false;
-    
-    mutations.forEach((mutation) => {
-      // Cek jika ada node baru yang ditambahkan
-      if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-        mutation.addedNodes.forEach((node) => {
-          if (node.nodeType === Node.ELEMENT_NODE) {
-            // Cek jika ada elemen dengan class select2-results__option
-            if (node.classList && node.classList.contains('select2-results__option')) {
-              const text = node.textContent || node.innerText || '';
-              if (text.trim() !== '' && !text.includes('Pilih') && !text.includes('Loading') && !text.includes('Searching')) {
-                console.log('🔍 MutationObserver: Opsi baru ditambahkan:', text.trim());
-                shouldTrigger = true;
-              }
-            }
-            
-            // Cek juga di child nodes
-            const select2Options = node.querySelectorAll && node.querySelectorAll('.select2-results__option');
-            if (select2Options && select2Options.length > 0) {
-              select2Options.forEach(option => {
-                const text = option.textContent || option.innerText || '';
-                if (text.trim() !== '' && !text.includes('Pilih') && !text.includes('Loading') && !text.includes('Searching')) {
-                  console.log('🔍 MutationObserver: Opsi baru ditemukan di child:', text.trim());
-                  shouldTrigger = true;
-                }
-              });
-            }
-          }
-        });
-      }
-    });
-    
-    if (shouldTrigger) {
-      console.log('📡 MutationObserver: Perubahan DOM terdeteksi, memicu auto fill...');
-      
-      // Clear timeout sebelumnya jika ada
-      if (delayedTriggerTimeout) {
-        clearTimeout(delayedTriggerTimeout);
-      }
-      
-      // Trigger auto fill setelah 500ms
-      delayedTriggerTimeout = setTimeout(async () => {
-        if (!isAutoFillRunning) {
-          console.log('🚀 MutationObserver delayed trigger: Memulai auto fill...');
-          await triggerAutoFill();
-        }
-      }, 500);
-    }
-  });
-  
-  // Mulai observe perubahan di document body
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true,
-    attributes: false,
-    characterData: false
-  });
-  
-  // Stop observer setelah 60 detik
-  setTimeout(() => {
-    observer.disconnect();
-    console.log('🔍 MutationObserver stopped');
-  }, 60000);
-  
-  console.log('✅ MutationObserver setup completed');
-}
-
-// Fungsi untuk setup retry mechanism yang lebih agresif
-function setupAutoFillRetry() {
-  console.log('🔄 Setting up auto fill retry mechanism...');
-  
-  // Clear interval sebelumnya jika ada
-  if (autoFillRetryInterval) {
-    clearInterval(autoFillRetryInterval);
-  }
-  
-  autoFillRetryCount = 0;
-  
-  // Retry setiap 2 detik (lebih sering untuk slow internet)
-  autoFillRetryInterval = setInterval(async () => {
-    if (isAutoFillRunning) {
-      console.log('⚠️ Auto fill sedang berjalan, skip retry...');
-      return;
-    }
-    
-    autoFillRetryCount++;
-    console.log(`🔄 Auto fill retry ${autoFillRetryCount}/${maxAutoFillRetries}...`);
-    
-    // Cek apakah ada dropdown yang belum terisi
-    const dropdowns = ['provinsi', 'kabupatenKota', 'kecamatan', 'kelurahanDesa'];
-    let hasEmptyDropdown = false;
-    let emptyDropdowns = [];
-    
-    for (const dropdownId of dropdowns) {
-      const element = document.getElementById(dropdownId);
-      if (element && (!element.value || element.value === '')) {
-        hasEmptyDropdown = true;
-        emptyDropdowns.push(dropdownId);
-        console.log(`📋 Dropdown ${dropdownId} masih kosong`);
-      }
-    }
-    
-    if (hasEmptyDropdown) {
-      console.log(`🚀 Retry: Memulai auto fill untuk dropdown kosong: ${emptyDropdowns.join(', ')}`);
-      
-      // Coba buka dropdown yang kosong untuk trigger load data
-      for (const dropdownId of emptyDropdowns) {
-        const element = document.getElementById(dropdownId);
-        if (element) {
-          console.log(`🔓 Membuka dropdown ${dropdownId} untuk trigger load data...`);
-          
-          // Method yang terbukti efektif untuk buka dropdown
-          const select2Container = document.querySelector(`#select2-${dropdownId}-container`);
-          if (select2Container) {
-            select2Container.click();
-          }
-          element.click();
-          
-          // AJAX trigger
-          if (select2Container) {
-            select2Container.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-            select2Container.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-            select2Container.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-          }
-          
-          // Keyboard events
-          element.focus();
-          element.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
-          
-          // Select2 API
-          if (typeof $ !== 'undefined' && $(element).data('select2')) {
-            $(element).select2('open');
-          }
-        }
-      }
-      
-      // Tunggu 1 detik untuk load data, lalu coba auto fill
-      setTimeout(async () => {
-        try {
-          await triggerAutoFill();
-        } catch (error) {
-          console.error('❌ Error dalam retry auto fill:', error);
-        }
-      }, 1000);
-      
-    } else {
-      console.log('✅ Semua dropdown sudah terisi, stop retry');
-      clearInterval(autoFillRetryInterval);
-      autoFillRetryInterval = null;
-    }
-    
-    // Stop retry setelah max attempts
-    if (autoFillRetryCount >= maxAutoFillRetries) {
-      console.log('⏰ Max retry attempts reached, stopping...');
-      clearInterval(autoFillRetryInterval);
-      autoFillRetryInterval = null;
-    }
-  }, 2000); // Retry setiap 2 detik
-  
-  console.log('✅ Auto fill retry mechanism setup completed');
-}
-
-// Fungsi untuk mendeteksi slow internet dan menyesuaikan timeout
-function detectSlowInternet(dropdownName, timeoutOccurred) {
-  if (timeoutOccurred) {
-    slowInternetDetectionCount++;
-    console.log(`🐌 Slow internet detection: ${slowInternetDetectionCount}/${slowInternetThreshold} (${dropdownName})`);
-    
-    if (slowInternetDetectionCount >= slowInternetThreshold && !isSlowInternet) {
-      isSlowInternet = true;
-      console.log('🐌 Slow internet terdeteksi! Menggunakan timeout yang lebih panjang...');
-      
-      // Update retry interval menjadi lebih sering untuk slow internet
-      if (autoFillRetryInterval) {
-        clearInterval(autoFillRetryInterval);
-        autoFillRetryInterval = setInterval(async () => {
-          // Retry logic yang sama tapi dengan interval lebih sering
-          if (isAutoFillRunning) {
-            console.log('⚠️ Auto fill sedang berjalan, skip retry...');
-            return;
-          }
-          
-          autoFillRetryCount++;
-          console.log(`🔄 Slow Internet Retry: ${autoFillRetryCount}/${maxAutoFillRetries}...`);
-          
-          // Cek dropdown kosong dan trigger auto fill
-          const dropdowns = ['provinsi', 'kabupatenKota', 'kecamatan', 'kelurahanDesa'];
-          let hasEmptyDropdown = false;
-          let emptyDropdowns = [];
-          
-          for (const dropdownId of dropdowns) {
-            const element = document.getElementById(dropdownId);
-            if (element && (!element.value || element.value === '')) {
-              hasEmptyDropdown = true;
-              emptyDropdowns.push(dropdownId);
-            }
-          }
-          
-          if (hasEmptyDropdown) {
-            console.log(`🚀 Slow Internet Retry: Memulai auto fill untuk dropdown kosong: ${emptyDropdowns.join(', ')}`);
-            
-            // Buka dropdown yang kosong untuk trigger load data
-            for (const dropdownId of emptyDropdowns) {
-              const element = document.getElementById(dropdownId);
-              if (element) {
-                const select2Container = document.querySelector(`#select2-${dropdownId}-container`);
-                if (select2Container) {
-                  select2Container.click();
-                }
-                element.click();
-                
-                if (select2Container) {
-                  select2Container.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-                  select2Container.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-                  select2Container.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-                }
-                
-                element.focus();
-                element.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
-                
-                if (typeof $ !== 'undefined' && $(element).data('select2')) {
-                  $(element).select2('open');
-                }
-              }
-            }
-            
-            // Tunggu 2 detik untuk load data, lalu coba auto fill
-            setTimeout(async () => {
-              try {
-                await triggerAutoFill();
-              } catch (error) {
-                console.error('❌ Error dalam slow internet retry auto fill:', error);
-              }
-            }, 2000);
-            
-          } else {
-            console.log('✅ Semua dropdown sudah terisi, stop slow internet retry');
-            clearInterval(autoFillRetryInterval);
-            autoFillRetryInterval = null;
-          }
-          
-          if (autoFillRetryCount >= maxAutoFillRetries) {
-            console.log('⏰ Max slow internet retry attempts reached, stopping...');
-            clearInterval(autoFillRetryInterval);
-            autoFillRetryInterval = null;
-          }
-        }, 1500); // Retry setiap 1.5 detik untuk slow internet
-      }
-    }
-  }
-}
-
-// Fungsi untuk mendapatkan timeout berdasarkan kondisi internet
-function getTimeoutForDropdown() {
-  if (isSlowInternet) {
-    return 30000; // 30 detik untuk slow internet
-  } else {
-    return 15000; // 15 detik untuk internet normal
   }
 }
 
@@ -624,15 +232,6 @@ if (window.location.href.includes('/sls/ubah/ubah-muatan')) {
   waitForPageReady().then(async () => {
     console.log('🚀 Halaman siap, menunggu elemen dropdown...');
     await waitForDropdownElements();
-    
-    // Setup dropdown load trigger untuk mendeteksi dropdown yang terlambat diload
-    setupDropdownLoadTrigger();
-    
-    // Setup MutationObserver untuk mendeteksi perubahan DOM
-    setupMutationObserver();
-    
-    // Setup retry mechanism
-    setupAutoFillRetry();
     
     console.log('🚀 Auto-executing dropdown automation...');
     await automateDropdowns();
@@ -895,11 +494,8 @@ async function addFloatingButton() {
       floatingButton.style.pointerEvents = 'none';
       
       if (isFormPage) {
-        // Jika di halaman form, setup trigger dan jalankan auto fill
+        // Jika di halaman form, jalankan auto fill
         console.log('🚀 Memulai auto fill dropdown...');
-        setupDropdownLoadTrigger();
-        setupMutationObserver();
-        setupAutoFillRetry();
         await automateDropdowns();
         
         // Kembalikan button ke state normal
@@ -922,11 +518,6 @@ async function addFloatingButton() {
             <div class="bps-floating-title">⏳ Loading Form...</div>
           </div>
         `;
-        
-        // Setup trigger sebelum navigate
-        setupDropdownLoadTrigger();
-        setupMutationObserver();
-        setupAutoFillRetry();
         
         // Navigate ke URL baru
         window.location.href = newUrl;
@@ -1128,57 +719,32 @@ async function automateDropdowns() {
       element.focus();
       element.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
       
-      // Delay 100ms untuk load data
-      await delay(100);
+      // Delay minimal untuk load data
+      await delay(50);
       
-                  // Tunggu opsi tersedia dengan timeout yang lebih panjang
-                  let options;
-                  let retryCount = 0;
-                  const maxRetries = 3;
-                  
-                  while (retryCount < maxRetries) {
-                    try {
-                      // Coba dengan timeout berdasarkan kondisi internet
-                      const timeout = getTimeoutForDropdown();
-                      options = await waitForOptionsFast(dropdown.id, timeout);
-                      break; // Berhasil, keluar dari loop
-                    } catch (error) {
-                      retryCount++;
-                      console.log(`⚠️ ${dropdown.name}: Retry ${retryCount}/${maxRetries} - ${error.message}`);
-                      
-                      // Deteksi slow internet jika timeout
-                      detectSlowInternet(dropdown.name, true);
-                      
-                      if (retryCount < maxRetries) {
-                        // Coba buka dropdown lagi
-                        const select2Container = document.querySelector(`#select2-${dropdown.id}-container`);
-                        if (select2Container) {
-                          select2Container.click();
-                        }
-                        element.click();
-                        await delay(500); // Tunggu lebih lama untuk retry
-                      } else {
-                        // Jika gagal dengan timeout normal, coba dengan slow internet mode
-                        console.log(`🐌 ${dropdown.name}: Mencoba slow internet mode...`);
-                        try {
-                          options = await waitForOptionsSlowInternet(dropdown.id, 30000);
-                          console.log(`✅ ${dropdown.name}: Slow internet mode berhasil!`);
-                          break;
-                        } catch (slowError) {
-                          console.log(`❌ ${dropdown.name}: Slow internet mode juga gagal - ${slowError.message}`);
-                          throw error; // Gagal setelah semua metode
-                        }
-                      }
-                    }
-                  }
+      // Tunggu opsi tersedia dengan timeout minimal
+      let options;
+      try {
+        options = await waitForOptionsFast(dropdown.id, 5000);
+      } catch (error) {
+        console.log(`⚠️ ${dropdown.name}: ${error.message}`);
+        // Coba sekali lagi dengan delay singkat
+        await delay(200);
+        try {
+          options = await waitForOptionsFast(dropdown.id, 3000);
+        } catch (retryError) {
+          console.log(`❌ ${dropdown.name}: Gagal setelah retry - ${retryError.message}`);
+          continue; // Skip dropdown ini
+        }
+      }
                   
                   // Pilih opsi dengan method tercepat
                   const selectedOption = await selectDropdownOptionInstant(dropdown, options);
                   
                   if (selectedOption) {
                     successCount++;
-                    // Tunggu dropdown berikutnya enabled (50ms)
-                    await delay(50);
+                    // Delay minimal antar dropdown
+                    await delay(20);
                   } else {
                     break;
                   }
@@ -1198,12 +764,10 @@ async function automateDropdowns() {
 
 // Fungsi-fungsi lama dihapus untuk performa yang lebih baik
 
-// Fungsi tunggu opsi dengan timeout yang lebih panjang dan stability check
-function waitForOptionsFast(elementId, timeout = 15000) {
+// Fungsi tunggu opsi dengan delay minimal
+function waitForOptionsFast(elementId, timeout = 5000) {
   return new Promise((resolve, reject) => {
     const startTime = Date.now();
-    let lastOptionCount = 0;
-    let stableCount = 0;
     
     const checkOptions = () => {
       const element = document.getElementById(elementId);
@@ -1212,67 +776,29 @@ function waitForOptionsFast(elementId, timeout = 15000) {
         return;
       }
       
-      // Cari opsi di tempat yang terbukti efektif berdasarkan log berhasil
-      let select2Options = [];
-      let select2Results = [];
-      let allSelect2Options = [];
+      // Cari opsi dengan method yang paling cepat
+      const allSelect2Options = document.querySelectorAll('.select2-results__option');
       
-      // 1. Cari di Select2 dropdown yang terbuka
-      const select2Dropdown = document.querySelector('.select2-dropdown');
-      if (select2Dropdown) {
-        select2Options = select2Dropdown.querySelectorAll('.select2-results__option');
-      }
-      
-      // 2. Cari di Select2 results container
-      const select2ResultsContainer = document.querySelector('.select2-results__options');
-      if (select2ResultsContainer) {
-        select2Results = select2ResultsContainer.querySelectorAll('.select2-results__option');
-      }
-      
-      // 3. Cari di semua elemen dengan class select2-results__option (terbukti efektif)
-      allSelect2Options = document.querySelectorAll('.select2-results__option');
-      
-      // Gabungkan opsi yang efektif
-      const allOptions = [...select2Options, ...select2Results, ...allSelect2Options];
-      
-      // Cek opsi valid (lebih fleksibel)
-      const validOptions = allOptions.filter(option => {
+      // Cek opsi valid
+      const validOptions = Array.from(allSelect2Options).filter(option => {
         const text = option.textContent || option.innerText || '';
-        const value = option.value || option.getAttribute('data-value') || '';
         return text.trim() !== '' && !text.includes('Pilih') && !text.includes('Loading') && !text.includes('Searching');
       });
       
-      // Log minimal untuk performa
-      if (allOptions.length > 0) {
-        console.log(`🔍 ${elementId}: ${allOptions.length} opsi, ${validOptions.length} valid`);
-      }
-      
-      // Cek apakah opsi sudah stabil (tidak bertambah lagi)
-      if (allOptions.length === lastOptionCount && allOptions.length > 0) {
-        stableCount++;
-      } else {
-        stableCount = 0;
-        lastOptionCount = allOptions.length;
-      }
-      
-      // Resolve jika ada opsi valid dan sudah stabil selama 3 check (150ms)
-      if (validOptions.length > 0 && stableCount >= 3) {
-        console.log(`✅ ${elementId}: Opsi stabil, ${validOptions.length} valid options`);
+      // Resolve segera jika ada opsi valid
+      if (validOptions.length > 0) {
+        console.log(`✅ ${elementId}: ${validOptions.length} opsi ditemukan`);
         resolve(validOptions);
-      } else if (allOptions.length > 0 && stableCount >= 3) {
-        // Gunakan opsi yang ada meskipun tidak valid
-        console.log(`✅ ${elementId}: Opsi stabil, ${allOptions.length} total options`);
-        resolve(allOptions);
       } else if (Date.now() - startTime > timeout) {
-        // Jika timeout, coba resolve dengan opsi yang ada
-        if (allOptions.length > 0) {
-          console.log(`⚠️ ${elementId}: Timeout, menggunakan ${allOptions.length} opsi yang tersedia`);
-          resolve(allOptions);
+        // Timeout dengan opsi yang ada
+        if (allSelect2Options.length > 0) {
+          console.log(`⚠️ ${elementId}: Timeout, menggunakan ${allSelect2Options.length} opsi yang tersedia`);
+          resolve(Array.from(allSelect2Options));
         } else {
           reject(new Error(`Options untuk ${elementId} tidak dimuat dalam ${timeout}ms`));
         }
       } else {
-        setTimeout(checkOptions, 50); // Check setiap 50ms
+        setTimeout(checkOptions, 100); // Check setiap 100ms
       }
     };
     
@@ -1280,106 +806,6 @@ function waitForOptionsFast(elementId, timeout = 15000) {
   });
 }
 
-// Fungsi khusus untuk slow internet dengan timeout yang lebih panjang
-function waitForOptionsSlowInternet(elementId, timeout = 30000) {
-  return new Promise((resolve, reject) => {
-    const startTime = Date.now();
-    let lastOptionCount = 0;
-    let stableCount = 0;
-    let retryCount = 0;
-    const maxRetries = 3;
-    
-    const checkOptions = () => {
-      const element = document.getElementById(elementId);
-      if (!element) {
-        reject(new Error(`Element ${elementId} tidak ditemukan`));
-        return;
-      }
-      
-      // Cari opsi di tempat yang terbukti efektif
-      let select2Options = [];
-      let select2Results = [];
-      let allSelect2Options = [];
-      
-      // 1. Cari di Select2 dropdown yang terbuka
-      const select2Dropdown = document.querySelector('.select2-dropdown');
-      if (select2Dropdown) {
-        select2Options = select2Dropdown.querySelectorAll('.select2-results__option');
-      }
-      
-      // 2. Cari di Select2 results container
-      const select2ResultsContainer = document.querySelector('.select2-results__options');
-      if (select2ResultsContainer) {
-        select2Results = select2ResultsContainer.querySelectorAll('.select2-results__option');
-      }
-      
-      // 3. Cari di semua elemen dengan class select2-results__option
-      allSelect2Options = document.querySelectorAll('.select2-results__option');
-      
-      // Gabungkan opsi yang efektif
-      const allOptions = [...select2Options, ...select2Results, ...allSelect2Options];
-      
-      // Cek opsi valid
-      const validOptions = allOptions.filter(option => {
-        const text = option.textContent || option.innerText || '';
-        const value = option.value || option.getAttribute('data-value') || '';
-        return text.trim() !== '' && !text.includes('Pilih') && !text.includes('Loading') && !text.includes('Searching');
-      });
-      
-      // Log untuk slow internet
-      if (allOptions.length > 0) {
-        console.log(`🐌 Slow Internet ${elementId}: ${allOptions.length} opsi, ${validOptions.length} valid (${Math.round((Date.now() - startTime)/1000)}s)`);
-      }
-      
-      // Cek apakah opsi sudah stabil
-      if (allOptions.length === lastOptionCount && allOptions.length > 0) {
-        stableCount++;
-      } else {
-        stableCount = 0;
-        lastOptionCount = allOptions.length;
-      }
-      
-      // Resolve jika ada opsi valid dan sudah stabil
-      if (validOptions.length > 0 && stableCount >= 2) { // Lebih toleran untuk slow internet
-        console.log(`✅ Slow Internet ${elementId}: Opsi stabil, ${validOptions.length} valid options`);
-        resolve(validOptions);
-      } else if (allOptions.length > 0 && stableCount >= 2) {
-        console.log(`✅ Slow Internet ${elementId}: Opsi stabil, ${allOptions.length} total options`);
-        resolve(allOptions);
-      } else if (Date.now() - startTime > timeout) {
-        // Jika timeout, coba retry dengan membuka dropdown lagi
-        if (retryCount < maxRetries) {
-          retryCount++;
-          console.log(`🔄 Slow Internet ${elementId}: Timeout, retry ${retryCount}/${maxRetries}...`);
-          
-          // Buka dropdown lagi untuk trigger load data
-          const select2Container = document.querySelector(`#select2-${elementId}-container`);
-          if (select2Container) {
-            select2Container.click();
-          }
-          element.click();
-          
-          // Reset counter dan coba lagi
-          lastOptionCount = 0;
-          stableCount = 0;
-          setTimeout(checkOptions, 1000); // Tunggu 1 detik untuk retry
-        } else {
-          // Jika masih timeout setelah retry, coba resolve dengan opsi yang ada
-          if (allOptions.length > 0) {
-            console.log(`⚠️ Slow Internet ${elementId}: Max retry reached, menggunakan ${allOptions.length} opsi yang tersedia`);
-            resolve(allOptions);
-          } else {
-            reject(new Error(`Options untuk ${elementId} tidak dimuat dalam ${timeout}ms setelah ${maxRetries} retry`));
-          }
-        }
-      } else {
-        setTimeout(checkOptions, 100); // Check setiap 100ms untuk slow internet
-      }
-    };
-    
-    checkOptions();
-  });
-}
 
 // Fungsi pemilihan dropdown yang sangat cepat (instan)
 async function selectDropdownOptionInstant(dropdown, options) {
